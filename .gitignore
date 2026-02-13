@@ -1,0 +1,31 @@
+# MiSTer Milestones Runtime (MMR)
+
+# Build artifacts
+daemon/mmr-daemon
+*.o
+*.a
+*.so
+*.out
+*.d
+
+# Editor junk
+*.swp
+*.swo
+*.tmp
+*~
+
+# OS junk
+.DS_Store
+
+# Logs
+*.log
+
+# Mock RAM snapshots
+*.bin
+
+# IDE
+.vscode/
+
+# Coverage
+*.gcda
+*.gcno
