@@ -1,30 +1,64 @@
 # MiSTer Milestones (MMR)
 
-MiSTer Milestones Runtime (MMR) is a MiSTer-native achievements framework. It enables automatic achievement
-evaluation by exporting safe, read-only memory snapshots from FPGA cores and running an on-device daemon to
-evaluate achievement logic. The first planned backend is RetroAchievements, but MMR is designed to support
-multiple backends over time.
+MiSTer Milestones Runtime (MMR) is a MiSTer-native achievement framework prototype.
 
-## What’s included in this starter repo
+It provides a userspace daemon that reads FPGA core memory snapshots and evaluates achievement logic using the RetroAchievements (rcheevos) runtime engine.
 
-- `kernel/mmr_memtap.h` — stable userspace ABI (ioctl + structs) for `/dev/mmr_memtap`
-- `daemon/` — `mmr-daemon` (MVP) with:
-  - real `/dev/mmr_memtap` reader mode
-  - mock mode (`--mock <dir>`) for development without FPGA patches
-  - region adapters for NES/SNES/Genesis
-  - a simple notification logger
-- `tools/` — helper to mutate mock RAM snapshot files for testing
+---
+
+## ⚠️ Current Status (v0.1.0-beta)
+
+This is an early infrastructure release.
+
+What works:
+
+- Mock mode (fully functional)
+- Real `/dev/mmr_memtap` reader implemented
+- NES / SNES / Genesis region adapters
+- On-device achievement condition evaluation
+- Console logging of triggered achievements
+
+What does NOT exist yet:
+
+- No on-screen display (no pop-ups)
+- No RetroAchievements server API integration
+- No account login or authentication
+- No achievement persistence
+- Requires memtap-enabled FPGA cores for real hardware mode
+
+This release validates the memory-read + runtime evaluation pipeline only.
+
+---
+
+## What's Included
+
+- `kernel/mmr_memtap.h`  
+  Stable userspace ABI (ioctl + structs) for `/dev/mmr_memtap`
+
+- `daemon/mmr-daemon` (MVP)  
+  - Real `/dev/mmr_memtap` reader mode  
+  - Mock mode (`--mock <dir>`) for development without FPGA patches  
+  - Region adapters for NES / SNES / Genesis  
+  - Runtime evaluation engine  
+  - Console achievement logger  
+
+- `tools/`  
+  Helpers for mutating mock RAM snapshot files during development
+
+---
 
 ## Build (Linux / Termux)
 
-```bash
+```
 cd daemon
 make
 ```
 
-## Run (mock mode)
+---
 
-Mock mode reads binary files that represent region snapshots:
+## Run (mock mode – development)
+
+Mock mode reads binary files representing region snapshots:
 
 - `nes_cpu_ram.bin` (2048 bytes)
 - `snes_wram.bin` (131072 bytes)
@@ -32,20 +66,64 @@ Mock mode reads binary files that represent region snapshots:
 
 Example:
 
-```bash
+```
 mkdir -p /tmp/mmr_mock
 dd if=/dev/zero of=/tmp/mmr_mock/nes_cpu_ram.bin bs=1 count=2048
+
 ./daemon/mmr-daemon --mock /tmp/mmr_mock --core nes --fps 60
 ```
 
-Then, in another terminal, mutate the mock RAM (for testing reads):
+In another terminal, mutate mock RAM:
 
-```bash
-python3 tools/mock_poke.py --file /tmp/mmr_mock/nes_cpu_ram.bin --offset 16 --value 255
+```
+python3 tools/mock_poke.py --file /tmp/mmr_mock/nes_cpu_ram.bin --offset 0x10 --value 1
 ```
 
-## Notes
+Triggered achievements will print to console.
 
-This repo intentionally does **not** include RetroAchievements (rcheevos) or server API integration yet.
-This MVP locks the memtap plumbing and adapter layer first. Next step is wiring an achievements backend
-into `mmr-daemon` once memtap is live on real cores.
+---
+
+## Run (real hardware mode)
+
+```
+./daemon/mmr-daemon --dev /dev/mmr_memtap --core nes --backend ra
+```
+
+⚠️ This requires:
+
+- `/dev/mmr_memtap` support
+- Core-level memtap implementation
+- Compatible MiSTer OS build
+
+Without memtap support, hardware mode will not function.
+
+---
+
+## Current Limitations
+
+- No on-screen achievement notifications
+- No server synchronization
+- No persistent unlocked achievement storage
+- No frontend UI
+- Intended for developer testing
+
+---
+
+## RetroAchievements Backend Status
+
+The RetroAchievements (rcheevos) runtime engine is integrated locally for condition evaluation.
+
+Server API integration is NOT implemented yet.
+
+Future releases will add:
+
+- Account login
+- Server validation
+- Achievement sync
+- Optional OSD overlay
+
+---
+
+## License
+
+MIT
