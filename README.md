@@ -2,10 +2,6 @@
 
 MiSTer Milestones Runtime (MMR) is a MiSTer-native achievement framework prototype.
 
-# MiSTer Milestones (MMR)
-
-MiSTer Milestones Runtime (MMR) is a MiSTer-native achievement framework prototype.
-
 It provides a userspace daemon that reads FPGA core memory snapshots and evaluates achievement logic using the RetroAchievements (rcheevos) runtime engine.
 
 ---
