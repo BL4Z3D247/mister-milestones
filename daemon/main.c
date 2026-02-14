@@ -1,5 +1,7 @@
 #include "memtap.h"
 #include "adapters.h"
+#include <stdbool.h>
+#include "engine.h"
 #include "notify.h"
 #include "util.h"
 
@@ -9,14 +11,17 @@
 
 static void usage(const char *argv0) {
   fprintf(stderr,
-    "Usage: %s [--dev /dev/mmr_memtap] [--mock DIR --core nes|snes|genesis] [--fps N]\n"
+    "Usage: %s [--dev /dev/mmr_memtap] [--mock DIR --core nes|snes|genesis] [--fps N] [--backend ra|none] [--only-on-change] [--log-every N]\n"
     "\n"
     "Modes:\n"
     "  Device: default, reads /dev/mmr_memtap\n"
     "  Mock:   --mock /path/to/dir --core nes|snes|genesis\n"
     "\n"
-    "This MVP daemon currently just bulk-reads the primary RAM region once per frame\n"
-    "and prints a small checksum to prove the data path.\n",
+    "Backends:\n"
+    "  ra    RetroAchievements backend (stub in this commit)\n"
+    "  none  No backend\n"
+    "\n"
+    "This daemon currently bulk-reads the primary RAM region once per frame.\n",
     argv0
   );
 }
@@ -29,6 +34,13 @@ static uint32_t parse_core(const char *s) {
   if (strcmp(s, "gen") == 0) return MMR_CORE_GENESIS;
   if (strcmp(s, "md") == 0) return MMR_CORE_GENESIS;
   return MMR_CORE_UNKNOWN;
+}
+
+static engine_backend_t parse_backend(const char *s) {
+  if (!s) return ENGINE_BACKEND_RA;
+  if (strcmp(s, "ra") == 0) return ENGINE_BACKEND_RA;
+  if (strcmp(s, "none") == 0) return ENGINE_BACKEND_NONE;
+  return ENGINE_BACKEND_RA;
 }
 
 static uint32_t simple_checksum(const uint8_t *buf, uint32_t n) {
@@ -44,6 +56,9 @@ int main(int argc, char **argv) {
   const char *mock_dir = NULL;
   uint32_t mock_core = MMR_CORE_UNKNOWN;
   uint32_t fps = 60;
+    bool only_on_change = false;
+    uint32_t log_every = 60;
+    engine_backend_t backend = ENGINE_BACKEND_RA;
 
   for (int i = 1; i < argc; i++) {
     if (strcmp(argv[i], "--dev") == 0 && i + 1 < argc) {
@@ -55,6 +70,12 @@ int main(int argc, char **argv) {
     } else if (strcmp(argv[i], "--fps") == 0 && i + 1 < argc) {
       fps = (uint32_t)atoi(argv[++i]);
       if (fps == 0) fps = 60;
+    } else if (strcmp(argv[i], "--backend") == 0 && i + 1 < argc) {
+      backend = parse_backend(argv[++i]);
+    } else if (strcmp(argv[i], "--only-on-change") == 0) {
+      only_on_change = true;
+    } else if (strcmp(argv[i], "--log-every") == 0 && i + 1 < argc) {
+      log_every = (uint32_t)atoi(argv[++i]);
     } else if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
       usage(argv[0]);
       return 0;
@@ -104,12 +125,33 @@ int main(int argc, char **argv) {
     return 1;
   }
 
+  engine_t *eng = NULL;
+  if (backend != ENGINE_BACKEND_NONE) {
+    eng = engine_create(backend);
+    if (!eng) {
+      notify(NOTIFY_ERR, "engine_create failed");
+      free(framebuf);
+      memtap_close(&mt);
+      return 1;
+    }
+    // Placeholder game_id for now (real ROM hash later)
+    (void)engine_set_context(eng, info.core_id, "unknown");
+    notify(NOTIFY_INFO, "engine enabled: %s", engine_name(eng));
+  } else {
+    notify(NOTIFY_INFO, "engine disabled");
+  }
+
   notify(NOTIFY_INFO, "mmr-daemon started (core_id=%u) region=%u size=%u bytes fps=%u",
          info.core_id, ad.primary_region, ad.primary_size, fps);
+    notify(NOTIFY_INFO, "log: only_on_change=%s log_every=%u",
+           only_on_change ? "true" : "false",
+           log_every);
 
   uint64_t last_frame = info.frame_counter;
   uint32_t frame_ms = (fps > 0) ? (1000u / fps) : 16u;
   if (frame_ms == 0) frame_ms = 1;
+    bool have_prev = false;
+    uint32_t prev_csum = 0;
 
   while (1) {
     (void)memtap_wait_frame(&mt, last_frame, frame_ms);
@@ -121,13 +163,36 @@ int main(int argc, char **argv) {
     ssize_t r = memtap_read(&mt, framebuf, ad.primary_size);
     if (r < 0) break;
 
-    uint32_t csum = simple_checksum(framebuf, (uint32_t)r);
-    notify(NOTIFY_INFO, "frame=%llu checksum=0x%08x", (unsigned long long)last_frame, csum);
+        uint32_t csum = simple_checksum(framebuf, (uint32_t)r);
+
+        bool changed  = (!have_prev) || (csum != prev_csum);
+        bool periodic = (log_every != 0) && ((uint32_t)last_frame % log_every == 0);
+        bool should_log  = (!only_on_change) || changed || periodic;
+        bool should_tick = (!only_on_change) || changed;
+
+        if (should_log) {
+            notify(NOTIFY_INFO,
+                   "frame=%llu bytes=%zd checksum=0x%08x%s%s",
+                   (unsigned long long)last_frame,
+                   r,
+                   csum,
+                   changed ? " changed" : (periodic ? " unchanged" : ""),
+                   periodic ? " periodic" : "");
+        }
+
+        if (should_tick && eng) {
+            engine_tick(eng, framebuf, (uint32_t)r, last_frame);
+        }
+
+        prev_csum = csum;
+        have_prev = true;
+
 
     if (mock_dir) sleep_ms(frame_ms);
   }
 
   notify(NOTIFY_ERR, "exiting");
+  if (eng) engine_destroy(eng);
   free(framebuf);
   memtap_close(&mt);
   return 1;
