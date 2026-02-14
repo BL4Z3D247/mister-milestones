@@ -33,3 +33,17 @@ daemon/mmr-daemon
 
 # release artifacts
 release/*.tar.gz
+# local dev/build artifacts
+beta/
+release/
+release/beta/
+release/beta/mmr-daemon
+sets/
+*.ko
+*.mod
+*.mod.c
+*.cmd
+Module.symvers
+modules.order
+.tmp_versions/
+**/.DS_Store
