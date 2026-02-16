@@ -54,6 +54,8 @@ static uint32_t fnv1a32(const uint8_t *p, size_t n) {
 }
 
 int main(int argc, char **argv) {
+  const char* ach_file = NULL;
+
   const char *dev_path = "/dev/mmr_memtap";
   const char *mock_dir = NULL;
   const char *core_str = NULL;
@@ -64,6 +66,15 @@ int main(int argc, char **argv) {
   int only_on_change = 0;
 
   for (int i = 1; i < argc; i++) {
+    if (strcmp(argv[i], "--ach-file") == 0) {
+      if (i + 1 >= argc) {
+        fprintf(stderr, "ERROR: --ach-file requires a path\n");
+        return 1;
+      }
+      ach_file = argv[++i];
+      continue;
+    }
+
     if (strcmp(argv[i], "--dev") == 0 && i + 1 < argc) {
       dev_path = argv[++i];
     } else if (strcmp(argv[i], "--mock") == 0 && i + 1 < argc) {
@@ -88,6 +99,11 @@ int main(int argc, char **argv) {
       return 2;
     }
   }
+  // Phase 1D: pass optional .ach file path to engine via environment
+  if (ach_file && *ach_file) {
+    setenv("MMR_ACH_FILE", ach_file, 1);
+  }
+
 
   uint32_t core_id = core_id_from_str(core_str);
   if (mock_dir && core_id == MMR_CORE_UNKNOWN) {
