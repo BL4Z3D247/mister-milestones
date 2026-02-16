@@ -1,10 +1,15 @@
 #include "engine.h"
 
+#include <stdbool.h>
+#include "ach_load.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "../third_party/rcheevos/include/rc_runtime.h"
+
+
+static bool g_ach_loaded_from_file = false;
 
 struct engine_s {
   engine_backend_t backend;
@@ -43,6 +48,45 @@ static void RC_CCONV ra_event_handler(const rc_runtime_event_t *ev) {
 
 /* ----- engine API ----- */
 
+
+
+// Phase 1D: load achievements from a .ach file if MMR_ACH_FILE is set.
+// If it loads successfully (and has entries), it REPLACES builtin activations.
+static bool engine_try_load_ach_file(engine_t* eng) {
+  const char* path = getenv("MMR_ACH_FILE");
+  if (!path || !*path) return false;
+
+  g_ach_loaded_from_file = false;
+
+  mmr_ach_list_t list;
+  if (!mmr_ach_load_file(path, &list)) {
+    fprintf(stderr, "[WARN] could not load ach file: %s (using builtins)\n", path);
+    return false;
+}
+
+  if (list.count == 0) {
+    fprintf(stderr, "[WARN] ach file loaded but empty: %s (using builtins)\n", path);
+    mmr_ach_free(&list);
+    return false;
+}
+
+  rc_runtime_reset(&eng->runtime);
+
+  for (size_t j = 0; j < list.count; j++) {
+    mmr_ach_def_t* a = &list.items[j];
+    int rc = rc_runtime_activate_achievement(&eng->runtime, a->id, a->memaddr, NULL, 0);
+    if (rc == 0) {
+      fprintf(stderr, "[INFO] loaded file achievement %u: %s\n", a->id, a->title);
+    } else {
+      fprintf(stderr, "[WARN] failed to activate achievement %u from file\n", a->id);
+    }
+  }
+
+  mmr_ach_free(&list);
+  g_ach_loaded_from_file = true;
+  return true;
+}
+
 bool engine_init(engine_t **out, engine_backend_t backend, uint32_t core_id) {
   if (!out) return false;
 
@@ -57,7 +101,8 @@ bool engine_init(engine_t **out, engine_backend_t backend, uint32_t core_id) {
   }
 
   *out = eng;
-  return true;
+    engine_try_load_ach_file(eng);
+return true;
 }
 
 void engine_destroy(engine_t *eng) {
@@ -82,6 +127,10 @@ void engine_destroy(engine_t *eng) {
  * It is a local simulation to validate the runtime+peek pipeline.
  */
 bool engine_load_builtin(engine_t *eng) {
+  // Phase 1D: skip builtin achievements if file achievements were loaded.
+  if (g_ach_loaded_from_file) return true;
+
+
   if (!eng) return false;
   if (eng->backend != ENGINE_BACKEND_RA) return true;
 
