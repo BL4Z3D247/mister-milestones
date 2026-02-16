@@ -7,7 +7,7 @@ RCHEEVOS_INC := -I../third_party/rcheevos/include
 # math lib needed for rcheevos (fmodf)
 LDLIBS ?= -lm
 
-SRC := main.c memtap.c adapters.c engine.c util.c notify.c
+SRC := main.c ach_load.c memtap.c adapters.c engine.c util.c notify.c
 
 # Find all rcheevos C files, but exclude:
 # - rc_libretro* (requires libretro.h)
