@@ -1,0 +1,18 @@
+# MiSTer Milestones - SMB1 demo achievement set (mock-friendly)
+#
+# Format:
+# achievement <id> "<title>" <memaddr>
+#
+# Notes:
+# - memaddr is a rcheevos-style expression string.
+# - For this demo we use simple “equals” checks on known SMB1 RAM addresses.
+#
+# SMB1 RAM (commonly used in docs/tools):
+# world = 0x075F (0-based world)
+# stage = 0x075C (1-based level index)
+# lives = 0x075A
+# coins = 0x07ED (low byte), 0x07EE (high byte)
+
+achievement 1 "SMB1: Entered World 1-1" 0xH00075F=0_0xH00075C=1
+achievement 2 "SMB1: Stockpile (5 lives)" 0xH00075A=5
+achievement 3 "SMB1: Counter Hit 5 (coins LE16)" 0xH0007ED=5_0xH0007EE=0
