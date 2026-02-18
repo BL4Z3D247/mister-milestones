@@ -52,26 +52,29 @@ static void RC_CCONV ra_event_handler(const rc_runtime_event_t *ev) {
 
 // Phase 1D: load achievements from a .ach file if MMR_ACH_FILE is set.
 // If it loads successfully (and has entries), it REPLACES builtin activations.
+// Phase 1E: load achievements from a .ach file if MMR_ACH_FILE is set.
+// Returns true iff it successfully replaced the active achievements.
 static bool engine_try_load_ach_file(engine_t* eng) {
+  const char* already = getenv("MMR_ACH_LOADED");
+  if (already && already[0] == '1') return true;
+
   const char* path = getenv("MMR_ACH_FILE");
   if (!path || !*path) return false;
-
-  g_ach_loaded_from_file = false;
 
   mmr_ach_list_t list;
   if (!mmr_ach_load_file(path, &list)) {
     fprintf(stderr, "[WARN] could not load ach file: %s (using builtins)\n", path);
     return false;
-}
+  }
 
   if (list.count == 0) {
     fprintf(stderr, "[WARN] ach file loaded but empty: %s (using builtins)\n", path);
     mmr_ach_free(&list);
     return false;
-}
+  }
 
+  // Replace whatever is active in the runtime with the file set.
   rc_runtime_reset(&eng->runtime);
-
   for (size_t j = 0; j < list.count; j++) {
     mmr_ach_def_t* a = &list.items[j];
     int rc = rc_runtime_activate_achievement(&eng->runtime, a->id, a->memaddr, NULL, 0);
@@ -83,9 +86,10 @@ static bool engine_try_load_ach_file(engine_t* eng) {
   }
 
   mmr_ach_free(&list);
-  g_ach_loaded_from_file = true;
+  setenv("MMR_ACH_LOADED", "1", 1);
   return true;
 }
+
 
 bool engine_init(engine_t **out, engine_backend_t backend, uint32_t core_id) {
   if (!out) return false;
@@ -100,9 +104,13 @@ bool engine_init(engine_t **out, engine_backend_t backend, uint32_t core_id) {
     rc_runtime_init(&eng->runtime);
   }
 
+  bool ach_from_file = engine_try_load_ach_file(eng);
+  if (!ach_from_file) {
+    engine_load_builtin(eng);
+  }
+
   *out = eng;
-    engine_try_load_ach_file(eng);
-return true;
+  return true;
 }
 
 void engine_destroy(engine_t *eng) {
@@ -127,6 +135,20 @@ void engine_destroy(engine_t *eng) {
  * It is a local simulation to validate the runtime+peek pipeline.
  */
 bool engine_load_builtin(engine_t *eng) {
+  // Phase 1E hardening:
+  // - If file achievements were loaded, NEVER load builtins.
+  // - Never load builtins more than once (prevents duplicate startup prints).
+  const char* ach_loaded = getenv("MMR_ACH_LOADED");
+  if (ach_loaded && ach_loaded[0] == '1') return true;
+
+  const char* builtins_loaded = getenv("MMR_BUILTINS_LOADED");
+  if (builtins_loaded && builtins_loaded[0] == '1') return true;
+  setenv("MMR_BUILTINS_LOADED", "1", 1);
+
+
+  // Phase 1E: if file achievements were loaded, skip builtin activations.
+  if (g_ach_loaded_from_file) return true;
+
   // Phase 1D: skip builtin achievements if file achievements were loaded.
   if (g_ach_loaded_from_file) return true;
 
