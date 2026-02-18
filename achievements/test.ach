@@ -1,0 +1,5 @@
+achievement 1
+title=Test Achievement
+description=Memory always zero
+points=5
+trigger=0xH0000=0
