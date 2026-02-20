@@ -1,39 +1,37 @@
 #include "engine.h"
 
 #include <stdbool.h>
-#include "ach_load.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
+#include "ach_load.h"
 #include "../third_party/rcheevos/include/rc_runtime.h"
-
-
-static bool g_ach_loaded_from_file = false;
-
-struct engine_s {
-  engine_backend_t backend;
-  uint32_t core_id;
-
-  rc_runtime_t runtime;
-
-  /* simple logging guard so we don't spam */
-  uint32_t triggered_mask;
-};
 
 /* ----- rcheevos callbacks ----- */
 
-static uint32_t read_le(const uint8_t *p, uint32_t n) {
+typedef struct {
+  const uint8_t *mem;
+  size_t mem_len;
+} ra_ctx_t;
+
+static uint32_t read_le_safe(const uint8_t *p, size_t avail, uint32_t n) {
   uint32_t v = 0;
+  /* if not enough bytes, return 0 (safe default). */
+  if (avail < (size_t)n) return 0;
   for (uint32_t i = 0; i < n; i++) v |= ((uint32_t)p[i]) << (8u * i);
   return v;
 }
 
 static uint32_t RC_CCONV ra_peek(uint32_t address, uint32_t num_bytes, void *ud) {
-  /* ud is a pointer to a struct holding the current snapshot buffer */
-  const uint8_t *mem = ((const uint8_t*)ud);
-  /* We cannot bounds-check without length here, so we keep achievements within RAM size. */
-  return read_le(mem + address, num_bytes);
+  const ra_ctx_t *ctx = (const ra_ctx_t*)ud;
+  if (!ctx || !ctx->mem) return 0;
+
+  /* bounds check to prevent segfaults if an achievement reads beyond snapshot */
+  if ((size_t)address >= ctx->mem_len) return 0;
+  size_t avail = ctx->mem_len - (size_t)address;
+
+  return read_le_safe(ctx->mem + address, avail, num_bytes);
 }
 
 static void RC_CCONV ra_event_handler(const rc_runtime_event_t *ev) {
@@ -46,50 +44,17 @@ static void RC_CCONV ra_event_handler(const rc_runtime_event_t *ev) {
   }
 }
 
-/* ----- engine API ----- */
+/* ----- engine implementation ----- */
 
+struct engine_s {
+  engine_backend_t backend;
+  uint32_t core_id;
 
+  rc_runtime_t runtime;
 
-// Phase 1D: load achievements from a .ach file if MMR_ACH_FILE is set.
-// If it loads successfully (and has entries), it REPLACES builtin activations.
-// Phase 1E: load achievements from a .ach file if MMR_ACH_FILE is set.
-// Returns true iff it successfully replaced the active achievements.
-static bool engine_try_load_ach_file(engine_t* eng) {
-  const char* already = getenv("MMR_ACH_LOADED");
-  if (already && already[0] == '1') return true;
-
-  const char* path = getenv("MMR_ACH_FILE");
-  if (!path || !*path) return false;
-
-  mmr_ach_list_t list;
-  if (!mmr_ach_load_file(path, &list)) {
-    fprintf(stderr, "[WARN] could not load ach file: %s (using builtins)\n", path);
-    return false;
-  }
-
-  if (list.count == 0) {
-    fprintf(stderr, "[WARN] ach file loaded but empty: %s (using builtins)\n", path);
-    mmr_ach_free(&list);
-    return false;
-  }
-
-  // Replace whatever is active in the runtime with the file set.
-  rc_runtime_reset(&eng->runtime);
-  for (size_t j = 0; j < list.count; j++) {
-    mmr_ach_def_t* a = &list.items[j];
-    int rc = rc_runtime_activate_achievement(&eng->runtime, a->id, a->memaddr, NULL, 0);
-    if (rc == 0) {
-      fprintf(stderr, "[INFO] loaded file achievement %u: %s\n", a->id, a->title);
-    } else {
-      fprintf(stderr, "[WARN] failed to activate achievement %u from file\n", a->id);
-    }
-  }
-
-  mmr_ach_free(&list);
-  setenv("MMR_ACH_LOADED", "1", 1);
-  return true;
-}
-
+  bool builtins_loaded;
+  bool file_loaded;
+};
 
 bool engine_init(engine_t **out, engine_backend_t backend, uint32_t core_id) {
   if (!out) return false;
@@ -102,11 +67,6 @@ bool engine_init(engine_t **out, engine_backend_t backend, uint32_t core_id) {
 
   if (backend == ENGINE_BACKEND_RA) {
     rc_runtime_init(&eng->runtime);
-  }
-
-  bool ach_from_file = engine_try_load_ach_file(eng);
-  if (!ach_from_file) {
-    engine_load_builtin(eng);
   }
 
   *out = eng;
@@ -123,52 +83,71 @@ void engine_destroy(engine_t *eng) {
   free(eng);
 }
 
+bool engine_load_ach_file(engine_t *eng, const char *path) {
+  if (!eng) return false;
+  if (eng->backend != ENGINE_BACKEND_RA) return true; /* nothing to do */
+  if (!path || !*path) return false;
+
+  mmr_ach_list_t list;
+  if (!mmr_ach_load_file(path, &list)) {
+    fprintf(stderr, "[WARN] could not load ach file: %s (fallback to builtins)\n", path);
+    return false;
+  }
+
+  if (list.count == 0) {
+    fprintf(stderr, "[WARN] ach file loaded but empty: %s (fallback to builtins)\n", path);
+    mmr_ach_free(&list);
+    return false;
+  }
+
+  /* replace whatever is active in the runtime with the file set */
+  rc_runtime_reset(&eng->runtime);
+
+  size_t ok_count = 0;
+  for (size_t j = 0; j < list.count; j++) {
+    mmr_ach_def_t *a = &list.items[j];
+    int rc = rc_runtime_activate_achievement(&eng->runtime, a->id, a->memaddr, NULL, 0);
+    if (rc == RC_OK) {
+      ok_count++;
+      fprintf(stderr, "[INFO] loaded file achievement %u: %s\n", a->id, a->title);
+    } else {
+      fprintf(stderr, "[WARN] failed to activate achievement %u from file (%s)\n",
+              a->id, rc_error_str(rc));
+    }
+  }
+
+  mmr_ach_free(&list);
+
+  if (ok_count == 0) {
+    fprintf(stderr, "[WARN] ach file had entries but none activated: %s (fallback to builtins)\n", path);
+    return false;
+  }
+
+  eng->file_loaded = true;
+  eng->builtins_loaded = false;
+  return true;
+}
+
 /* built-in “SMB1-like” mock achievements for NES CPU RAM
- *
- * Addresses:
- *  - 0x075F: world (0=World 1)
- *  - 0x075C: stage (1=Stage 1)
- *  - 0x075A: lives
- *  - 0x07ED/0x07EE: coins (LE16)
  *
  * NOTE: This is NOT official RetroAchievements content.
  * It is a local simulation to validate the runtime+peek pipeline.
  */
 bool engine_load_builtin(engine_t *eng) {
-  // Phase 1E hardening:
-  // - If file achievements were loaded, NEVER load builtins.
-  // - Never load builtins more than once (prevents duplicate startup prints).
-  const char* ach_loaded = getenv("MMR_ACH_LOADED");
-  if (ach_loaded && ach_loaded[0] == '1') return true;
-
-  const char* builtins_loaded = getenv("MMR_BUILTINS_LOADED");
-  if (builtins_loaded && builtins_loaded[0] == '1') return true;
-  setenv("MMR_BUILTINS_LOADED", "1", 1);
-
-
-  // Phase 1E: if file achievements were loaded, skip builtin activations.
-  if (g_ach_loaded_from_file) return true;
-
-  // Phase 1D: skip builtin achievements if file achievements were loaded.
-  if (g_ach_loaded_from_file) return true;
-
-
   if (!eng) return false;
   if (eng->backend != ENGINE_BACKEND_RA) return true;
+
+  /* Never load builtins if a file set was loaded */
+  if (eng->file_loaded) return true;
+
+  /* Never load builtins more than once */
+  if (eng->builtins_loaded) return true;
+  eng->builtins_loaded = true;
 
   if (eng->core_id != MMR_CORE_NES) {
     /* For now, only ship the NES mock set */
     return true;
   }
-
-  /* RA “memaddr” strings (condition language).
-   *
-   * Common pattern in RA memstrings:
-   *   0xHADDR=VALUE
-   * AND is represented by '_' in many RA contexts.
-   *
-   * We keep them simple and 8-bit safe.
-   */
 
   struct {
     uint32_t id;
@@ -180,10 +159,11 @@ bool engine_load_builtin(engine_t *eng) {
     { 3, "0xH07ED=5_0xH07EE=0","SMB1: Counter Hit 5 (coins LE16)" },
   };
 
-  for (size_t i = 0; i < sizeof(ach)/sizeof(ach[0]); i++) {
+  for (size_t i = 0; i < sizeof(ach) / sizeof(ach[0]); i++) {
     int rc = rc_runtime_activate_achievement(&eng->runtime, ach[i].id, ach[i].memaddr, NULL, 0);
     if (rc != RC_OK) {
-      fprintf(stderr, "[ERR] activate_achievement id=%u failed: %s\n", ach[i].id, rc_error_str(rc));
+      fprintf(stderr, "[ERR] activate_achievement id=%u failed: %s\n",
+              ach[i].id, rc_error_str(rc));
       return false;
     }
     printf("[INFO] loaded builtin achievement %u: %s\n", ach[i].id, ach[i].name);
@@ -194,11 +174,12 @@ bool engine_load_builtin(engine_t *eng) {
 }
 
 void engine_do_frame(engine_t *eng, const uint8_t *mem, size_t mem_len) {
-  (void)mem_len;
-
   if (!eng || eng->backend != ENGINE_BACKEND_RA) return;
+  if (!mem || mem_len == 0) return;
 
-  /* rcheevos runtime calls peek(address,num_bytes,ud); we pass mem as ud */
-  rc_runtime_do_frame(&eng->runtime, ra_event_handler, ra_peek, (void*)mem, NULL);
+  ra_ctx_t ctx;
+  ctx.mem = mem;
+  ctx.mem_len = mem_len;
+
+  rc_runtime_do_frame(&eng->runtime, ra_event_handler, ra_peek, (void*)&ctx, NULL);
 }
-

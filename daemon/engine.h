@@ -16,9 +16,9 @@ typedef struct engine_s engine_t;
 bool engine_init(engine_t **out, engine_backend_t backend, uint32_t core_id);
 void engine_destroy(engine_t *eng);
 
-/* load a small built-in achievement set for mock validation */
+/* load achievements */
 bool engine_load_builtin(engine_t *eng);
+bool engine_load_ach_file(engine_t *eng, const char *path);
 
 /* per-frame evaluation */
 void engine_do_frame(engine_t *eng, const uint8_t *mem, size_t mem_len);
-
