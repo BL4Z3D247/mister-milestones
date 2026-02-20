@@ -1,128 +1,167 @@
-# MiSTer Milestones (MMR)
+# MiSTer Milestones
 
-MiSTer Milestones Runtime (MMR) is a MiSTer-native achievement framework prototype.
+MiSTer Milestones is an achievement system for MiSTer FPGA hardware.
 
-It provides a userspace daemon that reads FPGA core memory snapshots and evaluates achievement logic using the RetroAchievements (rcheevos) runtime engine.
+It provides a userspace daemon that reads FPGA core memory snapshots and evaluates achievement logic using the RetroAchievements (rcheevos) engine.
+
+MiSTer Milestones is designed to bring deterministic, low-latency achievement evaluation directly to FPGA-based console cores.
 
 ---
 
-## ⚠️ Current Status (v0.1.0-beta)
+## ⚠️ Current Status (v0.1.0-a1 – Hardware Alpha)
 
-This is an early infrastructure release.
+This is the first hardware validation release of MiSTer Milestones.
 
-### What works
+This stage focuses on:
+
+- Kernel module compatibility across MiSTer kernel versions
+- Memory tap validation on real hardware
+- Service stability during live core execution
+
+Mock mode remains available for development and testing.
+
+This release is experimental and intended for developers and early testers.
+
+---
+
+## What Works
 
 - Mock mode (validated with NES only)
 - NES region adapter (validated in mock mode)
-- Runtime achievement condition evaluation
+- Achievement condition evaluation via rcheevos
 - Console logging of triggered achievements
 - `/dev/mmr_memtap` userspace interface implemented
 
-### Not tested / not validated
+---
+
+## Not Yet Validated
 
 - SNES adapter (implemented but untested)
 - Genesis adapter (implemented but untested)
-- Real hardware `/dev/mmr_memtap` mode
-- MiSTer FPGA core integration
-
-### What does NOT exist yet
-
-- No on-screen display (no pop-ups)
-- No RetroAchievements server API integration
-- No account login or authentication
-- No achievement persistence
-- No validated memtap-enabled FPGA cores
-- No real hardware testing performed
-
-This release validates the memory-read + runtime evaluation pipeline for NES in mock mode only.
+- Real hardware `/dev/mmr_memtap` mode across multiple kernels
+- MiSTer FPGA core-level memtap integration
 
 ---
 
-## What's Included
+## Not Implemented Yet
 
-### kernel/mmr_memtap.h
-Userspace ABI definition for `/dev/mmr_memtap` (ioctl + structures)
+- On-screen achievement display (OSD)
+- RetroAchievements server API integration
+- Account login or authentication
+- Achievement persistence
+- Validated memtap-enabled FPGA cores
 
-### daemon/mmr-daemon
-- Mock mode (`--mock <dir>`) for development without FPGA patches
-- Real device mode (`--dev /dev/mmr_memtap`) – untested
-- NES region adapter (validated in mock mode)
-- SNES / Genesis region scaffolding (untested)
-- rcheevos runtime engine integration
-- Console-based achievement logging
+This release validates the memory-read and achievement evaluation pipeline for NES in mock mode and begins hardware validation for MiSTer integration.
 
-### tools/
-Helpers for mutating mock RAM snapshot files during development
+---
+
+## Architecture Overview
+
+MiSTer Milestones consists of:
+
+### Kernel Interface
+`/dev/mmr_memtap`  
+Provides structured memory snapshot access from FPGA cores to userspace.
+
+### Userspace Daemon
+`mmr-daemon`  
+- Reads memory snapshots  
+- Adapts console-specific memory regions  
+- Evaluates achievement conditions using rcheevos  
+- Emits console-based achievement events  
+
+### Development Tools
+Mock RAM snapshot utilities for deterministic testing without FPGA patches.
 
 ---
 
 ## Build (Linux / Termux)
 
-cd daemon  
-make  
+```sh
+cd daemon
+make
+```
 
 ---
 
-## Run (mock mode – development)
+## Run (Mock Mode – Development)
 
 Mock mode reads binary files representing region snapshots:
 
-- nes_cpu_ram.bin (2048 bytes)
-- snes_wram.bin (131072 bytes)
-- gen_68k_ram.bin (65536 bytes)
+- `nes_cpu_ram.bin` (2048 bytes)
+- `snes_wram.bin` (131072 bytes)
+- `gen_68k_ram.bin` (65536 bytes)
 
 Example (NES):
 
-mkdir -p /tmp/mmr_mock  
-dd if=/dev/zero of=/tmp/mmr_mock/nes_cpu_ram.bin bs=1 count=2048  
+```sh
+mkdir -p /tmp/mmr_mock
+dd if=/dev/zero of=/tmp/mmr_mock/nes_cpu_ram.bin bs=1 count=2048
 
-./daemon/mmr-daemon --mock /tmp/mmr_mock --core nes --fps 60  
+./daemon/mmr-daemon --mock /tmp/mmr_mock --core nes --fps 60
+```
 
-In another terminal, mutate mock RAM:
+In another terminal:
 
-python3 tools/mock_poke.py --file /tmp/mmr_mock/nes_cpu_ram.bin --offset 0x10 --value 1  
+```sh
+python3 tools/mock_poke.py --file /tmp/mmr_mock/nes_cpu_ram.bin --offset 0x10 --value 1
+```
 
-Triggered achievements will print to console.
+Triggered achievements print to the console.
 
 ---
 
-## Run (real hardware mode – untested)
+## Run (Real Hardware Mode – Experimental)
 
-./daemon/mmr-daemon --dev /dev/mmr_memtap --core nes --backend ra  
+```sh
+./daemon/mmr-daemon --dev /dev/mmr_memtap --core nes --backend ra
+```
 
-⚠️ Requires:
+Requires:
 
 - `/dev/mmr_memtap` kernel support
 - Core-level memtap implementation
 - Compatible MiSTer OS build
 
-Hardware mode has not yet been validated on a physical MiSTer device.
+Hardware mode is experimental and part of the Hardware Alpha validation phase.
 
 ---
 
 ## Current Limitations
 
-- No on-screen achievement notifications  
-- No server synchronization  
-- No persistent unlocked achievement storage  
-- No frontend UI  
-- No validated FPGA core integration  
-- Intended for developer experimentation  
+- No on-screen achievement notifications
+- No server synchronization
+- No persistent unlocked achievement storage
+- No frontend UI
+- No validated FPGA core integration
+- Intended for developer experimentation
 
 ---
 
 ## RetroAchievements Backend Status
 
-The RetroAchievements (rcheevos) runtime engine is integrated locally for condition evaluation only.
+The RetroAchievements (rcheevos) engine is integrated locally for deterministic condition evaluation only.
 
-Server API integration is NOT implemented.
+Server API integration is not yet implemented.
 
-Future releases will add:
+Planned additions:
 
-- Account login  
-- Server validation  
-- Achievement sync  
-- Optional OSD overlay  
+- Account login
+- Server validation
+- Achievement synchronization
+- Optional OSD overlay
+
+---
+
+## Roadmap (High Level)
+
+Planned progression:
+
+1. Stabilize memtap kernel compatibility
+2. Validate real hardware across common MiSTer kernels
+3. Integrate on-screen notification system
+4. Implement RetroAchievements server API support
+5. Validate multiple FPGA cores
 
 ---
 
