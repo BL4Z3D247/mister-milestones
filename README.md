@@ -5,11 +5,9 @@ MiSTer Milestones is an achievement system for MiSTer FPGA hardware.
 It provides a userspace daemon that reads FPGA core memory snapshots and evaluates achievement logic using the RetroAchievements (rcheevos) engine.
 
 MiSTer Milestones is designed to bring deterministic, low-latency achievement evaluation directly to FPGA-based console cores.
-## Releases & Docs
-
-- **Hardware Alpha (v0.1.0-a1):** [`docs/hw-alpha/README_HW_ALPHA.md`](docs/hw-alpha/README_HW_ALPHA.md)
 
 ---
+
 ## ⚠️ Current Status (v0.1.0-a1 – Hardware Alpha)
 
 This is the first hardware validation release of MiSTer Milestones.
@@ -23,6 +21,15 @@ This stage focuses on:
 Mock mode remains available for development and testing.
 
 This release is experimental and intended for developers and early testers.
+
+---
+
+## Documentation
+
+- **Hardware Alpha Package Documentation:**  
+  [`docs/hw-alpha/README_HW_ALPHA.md`](docs/hw-alpha/README_HW_ALPHA.md)
+
+This document describes the packaged hardware alpha release, installation process, kernel module behavior, and tester reporting requirements.
 
 ---
 
@@ -62,11 +69,12 @@ This release validates the memory-read and achievement evaluation pipeline for N
 MiSTer Milestones consists of:
 
 ### Kernel Interface
-`/dev/mmr_memtap`
+`/dev/mmr_memtap`  
 Provides structured memory snapshot access from FPGA cores to userspace.
 
 ### Userspace Daemon
 `mmr-daemon`
+
 - Reads memory snapshots
 - Adapts console-specific memory regions
 - Evaluates achievement conditions using rcheevos
@@ -115,17 +123,6 @@ Triggered achievements print to the console.
 
 ## Run (Real Hardware Mode – Experimental)
 
-```sh
-./daemon/mmr-daemon --dev /dev/mmr_memtap --core nes --backend ra
-```
-
-Requires:
-
-- `/dev/mmr_memtap` kernel support
-- Core-level memtap implementation
-- Compatible MiSTer OS build
-
-Hardware mode is experimental and part of the Hardware Alpha validation phase.
 
 ---
 
