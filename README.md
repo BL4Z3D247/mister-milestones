@@ -8,19 +8,16 @@ MiSTer Milestones is designed to bring deterministic, low-latency achievement ev
 
 ---
 
-## ⚠️ Current Status (v0.1.0-a1 – Hardware Alpha)
+## Current Status
 
-This is the first hardware validation release of MiSTer Milestones.
+Latest release: v0.1.0-a2 (Hardware Alpha)
 
-This stage focuses on:
-
-- Kernel module compatibility across MiSTer kernel versions
-- Memory tap validation on real hardware
-- Service stability during live core execution
-
-Mock mode remains available for development and testing.
-
-This release is experimental and intended for developers and early testers.
+- Hardened daemon runtime
+- Shared memtap ABI alignment
+- Strict loopback /dev/mmr_memtap module
+- rcheevos local evaluation only
+- No OSD
+- No RetroAchievements server integration yet
 
 ---
 
