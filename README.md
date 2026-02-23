@@ -8,22 +8,29 @@ MiSTer Milestones is designed to bring deterministic, low-latency achievement ev
 
 ---
 
-## Current Status
+## ⚠️ Current Status (v0.1.0-a2 – Hardware Alpha)
+This is the first hardware validation release of MiSTer Milestones.
 
-Latest release: v0.1.0-a2 (Hardware Alpha)
+This stage focuses on:
 
-- Hardened daemon runtime
-- Shared memtap ABI alignment
-- Strict loopback /dev/mmr_memtap module
-- rcheevos local evaluation only
-- No OSD
-- No RetroAchievements server integration yet
+- Kernel module compatibility across MiSTer kernel versions
+- Memory tap validation on real hardware
+- Service stability during live core execution
+
+Mock mode remains available for development and testing.
+
+This release is experimental and intended for developers and early testers.
 
 ---
+## Releases & Docs
+
+- **Hardware Alpha guide:** [`docs/hw-alpha/README_HW_ALPHA.md`](docs/hw-alpha/README_HW_ALPHA.md)
+- **Release notes (v0.1.0-a2):** [`docs/release-notes/v0.1.0-a2.md`](docs/release-notes/v0.1.0-a2.md)
+
 
 ## Documentation
 
-- **Hardware Alpha Package Documentation:**  
+- **Hardware Alpha Package Documentation:**
   [`docs/hw-alpha/README_HW_ALPHA.md`](docs/hw-alpha/README_HW_ALPHA.md)
 
 This document describes the packaged hardware alpha release, installation process, kernel module behavior, and tester reporting requirements.
@@ -66,7 +73,7 @@ This release validates the memory-read and achievement evaluation pipeline for N
 MiSTer Milestones consists of:
 
 ### Kernel Interface
-`/dev/mmr_memtap`  
+`/dev/mmr_memtap`
 Provides structured memory snapshot access from FPGA cores to userspace.
 
 ### Userspace Daemon

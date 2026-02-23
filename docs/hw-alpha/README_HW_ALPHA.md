@@ -1,6 +1,6 @@
 # MiSTer Milestones – Hardware Alpha
 
-**Version:** 0.1.0-a1
+**Version:** 0.1.0-a2
 **Status:** Hardware Alpha (Early Testing)
 
 ---
